@@ -9,8 +9,13 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
-ENV POETRY_VIRTUALENVS_CREATE=false
 ENV PATH="/app/.venv/bin:$PATH"
+
+# FIXED: Set default environment variables for build process
+ENV DEBUG=False
+ENV SECRET_KEY=build-time-secret-key-will-be-replaced
+ENV DATABASE_URL=sqlite:///build.sqlite3
+ENV ALLOWED_HOSTS=localhost,127.0.0.1
 
 # ---------------------------
 # Working Directory
@@ -29,6 +34,7 @@ RUN apt-get update \
         tesseract-ocr-eng \
         poppler-utils \
         curl \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------
@@ -36,7 +42,8 @@ RUN apt-get update \
 # ---------------------------
 COPY requirements.txt /app/
 RUN python -m pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install dj-database-url
 
 # ---------------------------
 # Copy Project Files
@@ -48,27 +55,51 @@ COPY . /app/
 # ---------------------------
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
-USER appuser
 
 # ---------------------------
-# Ensure Directories Exist
+# Ensure Directories Exist (as root before switching user)
 # ---------------------------
 RUN mkdir -p /app/media /app/staticfiles \
-    && chmod -R 755 /app/media /app/staticfiles
-
+    && chmod -R 755 /app/media /app/staticfiles \
+    && chown -R appuser:appuser /app/media /app/staticfiles
 
 # ---------------------------
-# Collect Static Files
+# Switch to non-root user
 # ---------------------------
-RUN python manage.py collectstatic --noinput
+USER appuser
+
+# FIXED: Create a minimal .env file for collectstatic
+RUN echo "DEBUG=False" > /app/.env.build \
+    && echo "SECRET_KEY=build-time-secret" >> /app/.env.build \
+    && echo "DATABASE_URL=sqlite:///build.sqlite3" >> /app/.env.build \
+    && echo "ALLOWED_HOSTS=localhost" >> /app/.env.build
+
+# ---------------------------
+# Collect Static Files with build environment
+# ---------------------------
+RUN DJANGO_SETTINGS_MODULE=config.settings \
+    DATABASE_URL=sqlite:///build.sqlite3 \
+    SECRET_KEY=build-time-secret \
+    DEBUG=False \
+    python manage.py collectstatic --noinput
+
+# ---------------------------
+# Clean up build environment file
+# ---------------------------
+RUN rm -f /app/.env.build
 
 # ---------------------------
 # Expose Port
 # ---------------------------
 EXPOSE 8000
 
+# ---------------------------
+# Health Check
+# ---------------------------
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/auth/users/ || exit 1
 
 # ---------------------------
 # Run the Application
 # ---------------------------
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "config.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "config.wsgi:application"]
