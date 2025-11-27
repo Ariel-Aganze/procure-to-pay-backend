@@ -212,24 +212,47 @@ class ApprovalActionSerializer(serializers.Serializer):
     Serializer for approval/rejection actions
     """
     approved = serializers.BooleanField()
-    comments = serializers.CharField(required=False, allow_blank=True)
+    comments = serializers.CharField(
+        required=False, 
+        allow_blank=True, 
+        allow_null=True,  # This is the key fix!
+        max_length=1000
+    )
     
     def validate(self, attrs):
         request = self.context['request']
         purchase_request = self.context['purchase_request']
         user = request.user
         
-        # Check if user can approve
+        # Clean up comments - convert null to empty string
+        if attrs.get('comments') is None:
+            attrs['comments'] = ''
+        
+        # More detailed validation with better error messages
         if not user.can_approve_requests():
-            raise serializers.ValidationError("You don't have permission to approve requests")
+            raise serializers.ValidationError({
+                'error': f"Users with role '{user.get_role_display()}' cannot approve requests"
+            })
         
-        # Check if request is pending
         if purchase_request.status != PurchaseRequest.Status.PENDING:
-            raise serializers.ValidationError("This request cannot be approved/rejected")
+            raise serializers.ValidationError({
+                'error': f"Request is {purchase_request.get_status_display()} and cannot be modified"
+            })
         
-        # Check if user is in pending approvers
-        if user not in purchase_request.get_pending_approvers():
-            raise serializers.ValidationError("You cannot approve this request at this time")
+        # Check if user is in pending approvers (allow admin override)
+        if user.role != user.Role.ADMIN:
+            pending_approvers = purchase_request.get_pending_approvers()
+            if user not in pending_approvers:
+                approver_roles = [u.get_role_display() for u in pending_approvers]
+                raise serializers.ValidationError({
+                    'error': f"This request requires approval from: {', '.join(approver_roles)}"
+                })
+        
+        # Check comments requirement for rejection
+        if not attrs['approved'] and not attrs.get('comments', '').strip():
+            raise serializers.ValidationError({
+                'comments': "Comments are required when rejecting a request"
+            })
         
         return attrs
 

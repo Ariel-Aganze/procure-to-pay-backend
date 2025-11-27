@@ -1,4 +1,3 @@
-# apps/documents/services/__init__.py
 from .document_processor import (
     CohereDocumentProcessor,
     DocumentProcessingService,

@@ -27,7 +27,8 @@ from apps.accounts.permissions import (
     CanApprovePurchaseRequest,
     CanAccessPurchaseRequest
 )
-
+import logging
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -199,7 +200,7 @@ class ApprovalActionView(APIView):
     """
     Approve or reject a purchase request
     """
-    permission_classes = [permissions.IsAuthenticated, IsApproverUser]
+    permission_classes = [permissions.IsAuthenticated]  # Removed IsApproverUser to debug
     
     @swagger_auto_schema(
         operation_description="Approve or reject a purchase request",
@@ -211,27 +212,62 @@ class ApprovalActionView(APIView):
         }
     )
     def post(self, request, pk):
-        purchase_request = get_object_or_404(PurchaseRequest, pk=pk)
-        
-        # Check permission for this specific request
-        if not CanApprovePurchaseRequest().has_object_permission(request, self, purchase_request):
-            return Response(
-                {'error': 'You cannot approve/reject this request'},
-                status=status.HTTP_403_FORBIDDEN
+        try:
+            purchase_request = get_object_or_404(PurchaseRequest, pk=pk)
+            user = request.user
+            
+            # Enhanced logging for debugging
+            logger.info(f"Approval attempt: User {user.username} ({user.role}) for request {pk}")
+            logger.info(f"Request status: {purchase_request.status}")
+            logger.info(f"Request amount: {purchase_request.amount}")
+            logger.info(f"User approval level: {user.get_approval_level()}")
+            logger.info(f"Required levels: {purchase_request.get_required_approval_levels()}")
+            logger.info(f"Pending approvers: {[u.username for u in purchase_request.get_pending_approvers()]}")
+            
+            # Basic permission checks
+            if not user.can_approve_requests():
+                logger.warning(f"User {user.username} cannot approve requests (role: {user.role})")
+                return Response(
+                    {'error': 'You do not have permission to approve requests'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if request is pending
+            if purchase_request.status != PurchaseRequest.Status.PENDING:
+                logger.warning(f"Request {pk} is not pending (status: {purchase_request.status})")
+                return Response(
+                    {'error': f'This request is {purchase_request.status} and cannot be approved/rejected'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user is in pending approvers (more flexible check)
+            pending_approvers = purchase_request.get_pending_approvers()
+            if user not in pending_approvers and user.role != User.Role.ADMIN:
+                logger.warning(f"User {user.username} not in pending approvers: {[u.username for u in pending_approvers]}")
+                return Response(
+                    {'error': 'You cannot approve this request at this time. It may require a different approval level.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Validate request data
+            serializer = ApprovalActionSerializer(
+                data=request.data,
+                context={'request': request, 'purchase_request': purchase_request}
             )
-        
-        serializer = ApprovalActionSerializer(
-            data=request.data,
-            context={'request': request, 'purchase_request': purchase_request}
-        )
-        
-        if serializer.is_valid():
+            
+            if not serializer.is_valid():
+                logger.error(f"Serializer validation failed: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
             approved = serializer.validated_data['approved']
             comments = serializer.validated_data.get('comments', '')
             
+            logger.info(f"Processing approval: approved={approved}, comments='{comments[:50]}...'")
+            
             with transaction.atomic():
                 # Determine approval level
-                user_approval_level = request.user.get_approval_level()
+                user_approval_level = user.get_approval_level()
+                
                 if user_approval_level == 999:  # Admin can approve at any level
                     # Find the next required level
                     required_levels = purchase_request.get_required_approval_levels()
@@ -240,13 +276,14 @@ class ApprovalActionView(APIView):
                     )
                     pending_levels = required_levels - approved_levels
                     user_approval_level = min(pending_levels) if pending_levels else 1
+                    logger.info(f"Admin approval at level: {user_approval_level}")
                 
-                # Create approval record
+                # Create or update approval record
                 approval, created = Approval.objects.get_or_create(
                     purchase_request=purchase_request,
                     approval_level=user_approval_level,
                     defaults={
-                        'approver': request.user,
+                        'approver': user,
                         'approved': approved,
                         'comments': comments,
                         'approved_at': timezone.now()
@@ -255,11 +292,14 @@ class ApprovalActionView(APIView):
                 
                 if not created:
                     # Update existing approval
-                    approval.approver = request.user
+                    logger.info(f"Updating existing approval at level {user_approval_level}")
+                    approval.approver = user
                     approval.approved = approved
                     approval.comments = comments
                     approval.approved_at = timezone.now()
                     approval.save()
+                else:
+                    logger.info(f"Created new approval at level {user_approval_level}")
                 
                 # Update purchase request status
                 if not approved:
@@ -267,30 +307,47 @@ class ApprovalActionView(APIView):
                     purchase_request.status = PurchaseRequest.Status.REJECTED
                     purchase_request.save()
                     
+                    logger.info(f"Request {pk} rejected by {user.username}")
+                    
                     return Response({
                         'message': 'Request rejected successfully',
-                        'status': 'rejected'
+                        'status': 'rejected',
+                        'approval_level': user_approval_level
                     })
                 else:
                     # Check if all required approvals are complete
+                    logger.info(f"Checking if fully approved: {purchase_request.is_fully_approved}")
+                    
                     if purchase_request.is_fully_approved:
                         purchase_request.status = PurchaseRequest.Status.APPROVED
                         purchase_request.save()
                         
-                        # Trigger PO generation (we'll implement this in documents app)
+                        logger.info(f"Request {pk} fully approved")
+                        
+                        # Trigger PO generation (implement this in documents app)
                         # trigger_po_generation.delay(purchase_request.id)
                         
                         return Response({
                             'message': 'Request fully approved - PO generation initiated',
-                            'status': 'approved'
+                            'status': 'approved',
+                            'approval_level': user_approval_level
                         })
                     else:
+                        logger.info(f"Request {pk} partially approved - waiting for more approvals")
+                        
                         return Response({
                             'message': 'Approval recorded - waiting for additional approvals',
-                            'status': 'pending_approval'
+                            'status': 'pending_approval',
+                            'approval_level': user_approval_level,
+                            'remaining_approvers': [u.username for u in purchase_request.get_pending_approvers()]
                         })
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Unexpected error in approval: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An unexpected error occurred. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ReceiptUploadView(APIView):

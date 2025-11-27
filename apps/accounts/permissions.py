@@ -69,12 +69,16 @@ class IsPurchaseRequestOwner(permissions.BasePermission):
 class CanApprovePurchaseRequest(permissions.BasePermission):
     """
     Permission to check if user can approve a specific purchase request
+    More flexible version for debugging
     """
 
     def has_object_permission(self, request, view, obj):
         user = request.user
         
-        # User must be able to approve requests
+        # Basic checks
+        if not user.is_authenticated:
+            return False
+            
         if not user.can_approve_requests():
             return False
         
@@ -82,8 +86,13 @@ class CanApprovePurchaseRequest(permissions.BasePermission):
         if obj.status != obj.Status.PENDING:
             return False
         
-        # User must be in the list of pending approvers
-        return user in obj.get_pending_approvers()
+        # Admin can approve anything
+        if user.role == user.Role.ADMIN:
+            return True
+        
+        # Check if user is in pending approvers list
+        pending_approvers = obj.get_pending_approvers()
+        return user in pending_approvers
 
 
 class IsAdminOrReadOnly(permissions.BasePermission):
