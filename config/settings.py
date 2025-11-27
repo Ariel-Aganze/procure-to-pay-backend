@@ -5,6 +5,7 @@ import os
 import environ
 from pathlib import Path
 from datetime import timedelta
+from decouple import config
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +19,8 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, []),
     CORS_ALLOWED_ORIGINS=(list, []),
 )
+
+CORS_ALLOWED_ORIGIN_REGEXES = env.list("CORS_ALLOWED_ORIGIN_REGEXES", default=[])
 
 # Read .env file if it exists
 environ.Env.read_env(BASE_DIR / '.env')
@@ -147,6 +150,7 @@ USE_TZ = True
 STATIC_URL = env('STATIC_URL', default='/static/')
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').exists() else []
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -184,6 +188,7 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'https://procure-to-pay-frontend.vercel.app',
 ])
 CORS_ALLOW_CREDENTIALS = True
 
@@ -221,6 +226,14 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': config('REDIS_URL'),
+        'TIMEOUT': 7200,
+    }
+}
 
 # Swagger Settings
 SWAGGER_SETTINGS = {
