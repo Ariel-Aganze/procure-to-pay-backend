@@ -13,7 +13,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-producti
 DEBUG = config('DEBUG', default=True, cast=bool)
 
 # ALLOWED_HOSTS configuration
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1, https://procure-to-pay-backend-y65j.onrender.com/', cast=Csv())
 
 # Application definition
 DJANGO_APPS = [

@@ -11,11 +11,11 @@ ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/app/.venv/bin:$PATH"
 
-# FIXED: Set default environment variables for build process
+# environment variables for build process
 ENV DEBUG=False
 ENV SECRET_KEY=build-time-secret-key-will-be-replaced
 ENV DATABASE_URL=sqlite:///build.sqlite3
-ENV ALLOWED_HOSTS=localhost,127.0.0.1
+ENV ALLOWED_HOSTS=localhost,127.0.0.1, https://procure-to-pay-backend-y65j.onrender.com/
 
 # ---------------------------
 # Working Directory
