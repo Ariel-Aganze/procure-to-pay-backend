@@ -1,46 +1,74 @@
-# Use Python 3.11 slim image
+# ---------------------------
+# Base Image
+# ---------------------------
 FROM python:3.11-slim
 
-# Set environment variables
+# ---------------------------
+# Environment Variables
+# ---------------------------
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+ENV POETRY_VIRTUALENVS_CREATE=false
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Set work directory
+# ---------------------------
+# Working Directory
+# ---------------------------
 WORKDIR /app
 
-# Install system dependencies
+# ---------------------------
+# Install System Dependencies
+# ---------------------------
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        postgresql-client \
         build-essential \
         libpq-dev \
+        postgresql-client \
         tesseract-ocr \
         tesseract-ocr-eng \
         poppler-utils \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# ---------------------------
+# Copy Requirements & Install Python Dependencies
+# ---------------------------
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copy project
+# ---------------------------
+# Copy Project Files
+# ---------------------------
 COPY . /app/
 
-# Create directories for media and static files
-RUN mkdir -p /app/media /app/staticfiles
-
-# Collect static files
-RUN python manage.py collectstatic --noinput
-
-# Create a non-root user
+# ---------------------------
+# Create Non-root User
+# ---------------------------
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
+# ---------------------------
+# Ensure Directories Exist
+# ---------------------------
+RUN mkdir -p /app/media /app/staticfiles \
+    && chmod -R 755 /app/media /app/staticfiles
+
+
+# ---------------------------
+# Collect Static Files
+# ---------------------------
+RUN python manage.py collectstatic --noinput
+
+# ---------------------------
+# Expose Port
+# ---------------------------
 EXPOSE 8000
 
-# Command to run the application
+
+# ---------------------------
+# Run the Application
+# ---------------------------
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "config.wsgi:application"]
