@@ -6,6 +6,9 @@ import environ
 from pathlib import Path
 from datetime import timedelta
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -146,8 +149,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').exists() else []
 
 # Media files
-MEDIA_URL = env('MEDIA_URL', default='/media/')
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -261,4 +264,26 @@ LOGGING = {
             'propagate': True,
         },
     },
+}
+
+COHERE_API_KEY = os.getenv('COHERE_API_KEY', '')
+COHERE_API_URL = 'https://api.cohere.ai/v1'
+
+# Document Processing Settings
+DOCUMENT_PROCESSING_ENABLED = True
+DOCUMENT_PROCESSING_PROVIDER = 'cohere'  # Options: 'cohere', 'openai', 'local'
+DOCUMENT_MAX_SIZE = 10 * 1024 * 1024  # 10MB
+
+# AI Processing Settings
+AI_PROCESSING_TIMEOUT = 30  # seconds
+AI_PROCESSING_MAX_RETRIES = 3
+AI_PROCESSING_MODELS = {
+    'document_extraction': 'command-r-plus',
+    'receipt_validation': 'command-r',
+    'text_analysis': 'command'
+}
+
+CELERY_TASK_ROUTES = {
+    'documents.tasks.process_document_with_ai': {'queue': 'ai_processing'},
+    'documents.tasks.validate_receipt_with_ai': {'queue': 'ai_processing'},
 }

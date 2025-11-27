@@ -1,21 +1,24 @@
-from django.urls import path
+from django.urls import path, re_path
 from . import views
 
 urlpatterns = [
-    # Document processing
-    path('status/<uuid:pk>/', views.DocumentProcessingStatusView.as_view(), name='document-processing-status'),
-    path('upload-proforma/<uuid:pk>/', views.ProformaUploadView.as_view(), name='upload-proforma'),
-    path('trigger/<uuid:pk>/', views.TriggerDocumentProcessingView.as_view(), name='trigger-processing'),
+    # Comet AI Status
+    path('comet-status/', views.CometStatusView.as_view(), name='comet-status'),
     
-    # Processing jobs
-    path('jobs/', views.AIProcessingJobListView.as_view(), name='processing-jobs'),
-    path('jobs/<uuid:pk>/', views.AIProcessingJobDetailView.as_view(), name='processing-job-detail'),
+    # Document Upload - Handle both numeric and 'null' request IDs
+    re_path(r'^upload-proforma/(?P<request_id>\w+)/$', views.UploadProformaView.as_view(), name='upload-proforma'),
     
-    # Extracted data and validation results
-    path('extracted-data/', views.ExtractedDataListView.as_view(), name='extracted-data'),
-    path('validation-results/', views.ValidationResultListView.as_view(), name='validation-results'),
+    # Document Processing - Handle both numeric and 'null' request IDs  
+    re_path(r'^comet-process/(?P<request_id>\w+)/$', views.ProcessDocumentView.as_view(), name='comet-process'),
+    re_path(r'^comet-status/(?P<request_id>\w+)/(?P<job_id>[\w\-]+)/$', views.ProcessingStatusView.as_view(), name='comet-processing-status'),
     
-    # Service status and stats
-    path('ollama-status/', views.ollama_status, name='ollama-status'),
-    path('processing-stats/', views.document_processing_stats, name='processing-stats'),
+    # Receipt upload
+    re_path(r'^upload-receipt/(?P<request_id>\w+)/$', views.UploadReceiptView.as_view(), name='upload-receipt'),
+    
+    # Stats
+    path('processing-stats/', views.ProcessingStatsView.as_view(), name='processing-stats'),
+    
+    # Legacy compatibility - Handle both numeric and 'null' request IDs
+    re_path(r'^trigger/(?P<request_id>\w+)/$', views.ProcessDocumentView.as_view(), name='trigger-processing'),
+    re_path(r'^status/(?P<request_id>\w+)/(?P<job_id>[\w\-]+)/$', views.ProcessingStatusView.as_view(), name='processing-status'),
 ]

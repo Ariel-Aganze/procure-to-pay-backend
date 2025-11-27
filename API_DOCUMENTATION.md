@@ -1,17 +1,13 @@
 # Procure-to-Pay API Documentation
 
-## Base URL
-- **Development:** `http://localhost:8000`
-- **Production:** `https://your-app.render.com`
-
 ## Authentication
 All API endpoints (except registration/login) require JWT authentication.
 
 ### Headers
-```
+
 Authorization: Bearer <your_jwt_access_token>
 Content-Type: application/json
-```
+
 
 ## Endpoints Overview
 
@@ -131,7 +127,7 @@ Content-Type: application/json
 ## Example Usage
 
 ### 1. Register and Login
-```bash
+bash
 # Register
 curl -X POST http://localhost:8000/api/auth/register/ \
   -H "Content-Type: application/json" \
@@ -152,10 +148,10 @@ curl -X POST http://localhost:8000/api/auth/login/ \
     "username": "john_doe",
     "password": "securepass123"
   }'
-```
+
 
 ### 2. Create Purchase Request
-```bash
+bash
 curl -X POST http://localhost:8000/api/requests/ \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -167,17 +163,17 @@ curl -X POST http://localhost:8000/api/requests/ \
     "vendor_name": "Office Depot",
     "vendor_email": "sales@officedepot.com"
   }'
-```
+
 
 ### 3. Upload Proforma
-```bash
+bash
 curl -X POST http://localhost:8000/api/documents/upload-proforma/REQUEST_ID/ \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "proforma=@/path/to/proforma.pdf"
-```
+
 
 ### 4. Approve Request
-```bash
+bash
 curl -X POST http://localhost:8000/api/requests/REQUEST_ID/approve/ \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -185,7 +181,7 @@ curl -X POST http://localhost:8000/api/requests/REQUEST_ID/approve/ \
     "approved": true,
     "comments": "Approved for purchase"
   }'
-```
+
 
 ## AI Features
 
